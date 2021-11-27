@@ -1,0 +1,80 @@
+## template: jinja
+#cloud-config
+{% if v1.distro == 'ubuntu' %}
+apt:
+  disable_suites:
+    - $RELEASE-proposed
+  preserve_sources_list: true
+  sources:
+    kiruya:
+      keyid: 449A9D32373ED8C8
+    fish:
+      source: "ppa:fish-shell/release-3"
+{% endif %}
+bootcmd:
+  - |
+    # ip=$(grep /var/lib/waagent/SharedConfig.xml -e 'address' --color=never | sed -e 's/["\r]//g' | awk '{$1=$1};1')
+    ip=""
+    curl -X POST -H 'Content-type: application/json' --data '{"type": "mrkdwn", "text":":new_moon_with_face: Cloud init starting: {{ ds.meta_data.imds.compute.name }}\n```'"$ip\n{{ ds.meta_data.imds.compute.tags }}\n{{ ds.meta_data.imds.network.interface }}"'```"}' $slack_hook
+# https://github.com/microsoft/OMS-Agent-for-Linux/issues/1405
+  - |
+    mkdir -p /etc/systemd/system/omsagent-.service.d/
+    cat <<EOF > /etc/systemd/system/omsagent-.service.d/fix-cloud-init.conf
+    [Unit]
+    After=cloud-config.service
+    EOF
+    systemctl daemon-reload
+{% if v1.distro == 'ubuntu' %}
+#   - apt-add-repository ppa:fish-shell/release-3
+#   - curl -L https://victoryang00.cn/kyaru/fuck.sh -o /tmp/fuck.sh
+#   - chmod +x /tmp/fuck.sh
+#   - /tmp/fuck.sh
+{% endif %}
+package_update: true
+package_upgrade: false
+packages:
+  - gcc
+  - make
+  - clang
+  - wget
+  - sudo
+  - git
+  - tar
+  - tmux
+{% if v1.distro == 'ubuntu' %}
+  - apt-transport-https
+  - software-properties-common
+  - fish
+{% endif %}
+runcmd:
+  # golang
+  - rm -rf /usr/local/go
+  - curl -sSfL https://golang.org/dl/go1.17.2.linux-amd64.tar.gz | tar -C /usr/local -xz
+  - echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/profile.d/go.sh
+{% if v1.distro == 'ubuntu' %}
+  # micro
+  - |
+    curl -L https://github.com/zyedidia/micro/releases/download/v2.0.10/micro-2.0.10-amd64.deb -o /tmp/micro.deb
+    apt install -yq /tmp/micro.deb
+  # bat
+  - |
+    curl -L https://github.com/sharkdp/bat/releases/download/v0.18.3/bat_0.18.3_amd64.deb -o /tmp/bat.deb
+    apt install -yq /tmp/bat.deb
+  # Fix wrong RDMA address
+  - curl -L https://victoryang00.cn/kyaru/rdma.py -o /tmp/rdma.py && sudo python3 /tmp/rdma.py
+{% endif %}
+  - |
+    ip=$(grep /var/lib/waagent/SharedConfig.xml -e 'address' --color=never | sed -e 's/["\r]//g' | awk '{$1=$1};1')
+    curl -X POST -H 'Content-type: application/json' --data '{"type": "mrkdwn", "text":":full_moon_with_face: Cloud init finished: {{ ds.meta_data.imds.compute.name }}\n```'"$ip\n{{ ds.meta_data.imds.compute.tags }}\n{{ ds.meta_data.imds.network.interface }}"'```"}' $slack_hook
+users:
+  - default
+  - gecos: Kiruya Momochi
+    groups: sudo
+    name: kyaru
+{% if v1.distro == 'ubuntu' %}
+    shell: /usr/bin/fish
+{% endif %}
+    ssh_import_id:
+        - gh:KiruyaMomochi
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    uid: 1234
